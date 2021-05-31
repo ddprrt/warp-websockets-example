@@ -60,15 +60,12 @@ async fn user_connected(ws: WebSocket, users: Users) {
     while let Some(result) = user_rx.next().await {
         let msg = match result {
             Ok(msg) => msg,
-            Err(e) => {
-                Message::text(format!("Error {}", e.to_string()))
-            }
+            Err(e) => Message::text(format!("Error {}", e.to_string())),
         };
         user_message(msg, &users).await;
     }
 
     user_disconnected(my_id, &users_disc).await;
-
 }
 
 async fn user_message(msg: Message, users: &Users) {
@@ -78,7 +75,6 @@ async fn user_message(msg: Message, users: &Users) {
         }
     }
 }
-
 
 async fn user_disconnected(my_id: usize, users: &Users) {
     println!("good bye user: {}", my_id);
