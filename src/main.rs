@@ -1,4 +1,7 @@
 use futures::StreamExt;
+use std::env;
+use std::fs;
+use std::net::SocketAddr;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -11,11 +14,18 @@ type Users = Arc<RwLock<HashMap<usize, mpsc::UnboundedSender<Result<Message, war
 
 #[tokio::main]
 async fn main() {
+    let addr = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "127.0.0.1:8080".to_string());
+    let socket_address: SocketAddr = addr.parse().expect("valid socket Address");
+
     let users = Users::default();
     let users = warp::any().map(move || users.clone());
 
     // GET /hello/warp => 200 OK with body "Hello, warp!"
-    let hello = warp::path!("hello" / String).map(|name| format!("Hello, {}!", name));
+    let hello = warp::path("hello")
+        .and(warp::path::param())
+        .map(|name: String| format!("Hello, {}!", name));
 
     let chat = warp::path("ws")
         .and(warp::ws())
@@ -24,11 +34,17 @@ async fn main() {
 
     let files = warp::fs::dir("./static");
 
-    let routes = chat.or(hello).or(files);
+    let res_404 = warp::any().map(|| {
+        warp::http::Response::builder()
+            .status(warp::http::StatusCode::NOT_FOUND)
+            .body(fs::read_to_string("./static/404.html").expect("404 404?"))
+    });
 
-    let server = warp::serve(routes).run(([127, 0, 0, 1], 8080));
+    let routes = chat.or(hello).or(files).or(res_404);
 
-    println!("Running server!");
+    let server = warp::serve(routes).run(socket_address);
+
+    println!("Running server at {}!", addr);
 
     server.await;
 }
