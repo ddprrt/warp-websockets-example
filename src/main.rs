@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use futures::{FutureExt, StreamExt};
+use futures::StreamExt;
 
 use tokio::sync::{
     mpsc::{self},
@@ -39,39 +39,36 @@ async fn main() {
 
     let routes = chat.or(hello).or(files);
 
-    warp::serve(routes).run(([127, 0, 0, 1], 8080)).await;
+    let server = warp::serve(routes).run(([127, 0, 0, 1], 8080));
+
+    println!("Running server!");
+
+    server.await;
 }
 
 async fn user_connected(ws: WebSocket, users: Users) {
     let my_id = NEXT_USERID.fetch_add(1, Ordering::Relaxed);
+
+    println!("conntected user: {}", my_id);
+
     let (user_tx, mut user_rx) = ws.split();
     let (tx, rx) = mpsc::unbounded_channel();
     let rx = UnboundedReceiverStream::new(rx);
 
-    tokio::task::spawn(rx.forward(user_tx).map(|res| {
-        if let Err(e) = res {
-            println!("socket send error {}", e);
-        }
-    }));
+    tokio::task::spawn(rx.forward(user_tx));
     users.write().await.insert(my_id, tx);
 
-    let users_disc = users.clone();
-
     while let Some(result) = user_rx.next().await {
-        let msg = match result {
-            Ok(msg) => msg,
-            Err(e) => Message::text(format!("Error {}", e.to_string())),
-        };
-        user_message(msg, &users).await;
+        user_message(result.expect("Failed to fetch message"), &users).await;
     }
 
-    user_disconnected(my_id, &users_disc).await;
+    user_disconnected(my_id, &users).await;
 }
 
 async fn user_message(msg: Message, users: &Users) {
     if let Ok(_s_msg) = msg.to_str() {
         for (&_uid, tx) in users.read().await.iter() {
-            tx.send(Ok(msg.clone())).unwrap();
+            tx.send(Ok(msg.clone())).expect("Failed to send message");
         }
     }
 }
