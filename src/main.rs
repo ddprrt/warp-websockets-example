@@ -1,24 +1,11 @@
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-};
-
 use futures::StreamExt;
-
-use tokio::sync::{
-    mpsc::{self},
-    RwLock,
-};
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use warp::{
-    ws::{Message, WebSocket},
-    Filter,
-};
+use warp::ws::{Message, WebSocket};
+use warp::Filter;
 
-static NEXT_USERID: AtomicUsize = AtomicUsize::new(1);
+static NEXT_USERID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
 
 type Users = Arc<RwLock<HashMap<usize, mpsc::UnboundedSender<Result<Message, warp::Error>>>>>;
 
@@ -33,7 +20,7 @@ async fn main() {
     let chat = warp::path("ws")
         .and(warp::ws())
         .and(users)
-        .map(|ws: warp::ws::Ws, users| ws.on_upgrade(move |socket| user_connected(socket, users)));
+        .map(|ws: warp::ws::Ws, users| ws.on_upgrade(move |socket| connect(socket, users)));
 
     let files = warp::fs::dir("./static");
 
@@ -46,8 +33,8 @@ async fn main() {
     server.await;
 }
 
-async fn user_connected(ws: WebSocket, users: Users) {
-    let my_id = NEXT_USERID.fetch_add(1, Ordering::Relaxed);
+async fn connect(ws: WebSocket, users: Users) {
+    let my_id = NEXT_USERID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
     println!("conntected user: {}", my_id);
 
@@ -59,13 +46,13 @@ async fn user_connected(ws: WebSocket, users: Users) {
     users.write().await.insert(my_id, tx);
 
     while let Some(result) = user_rx.next().await {
-        user_message(result.expect("Failed to fetch message"), &users).await;
+        broadcast_message(result.expect("Failed to fetch message"), &users).await;
     }
 
-    user_disconnected(my_id, &users).await;
+    disconnect(my_id, &users).await;
 }
 
-async fn user_message(msg: Message, users: &Users) {
+async fn broadcast_message(msg: Message, users: &Users) {
     if let Ok(_s_msg) = msg.to_str() {
         for (&_uid, tx) in users.read().await.iter() {
             tx.send(Ok(msg.clone())).expect("Failed to send message");
@@ -73,7 +60,7 @@ async fn user_message(msg: Message, users: &Users) {
     }
 }
 
-async fn user_disconnected(my_id: usize, users: &Users) {
+async fn disconnect(my_id: usize, users: &Users) {
     println!("good bye user: {}", my_id);
 
     // Stream closed up, so remove from the user list
