@@ -22,10 +22,15 @@ async fn main() {
     let users = Users::default();
     let users = warp::any().map(move || users.clone());
 
+    let opt = warp::path::param::<String>().map(Some).or_else(|_| async {
+        Ok::<(Option<String>,), std::convert::Infallible>((Some("world".to_string()),))
+    });
+
     // GET /hello/warp => 200 OK with body "Hello, warp!"
     let hello = warp::path("hello")
-        .and(warp::path::param())
-        .map(|name: String| format!("Hello, {}!", name));
+        .and(opt)
+        .and(warp::path::end())
+        .map(|name: Option<String>| format!("Hello, {}!", name.unwrap()));
 
     let chat = warp::path("ws")
         .and(warp::ws())
