@@ -5,7 +5,6 @@ use std::net::SocketAddr;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use warp::http::HeaderValue;
 use warp::ws::{Message, WebSocket};
 use warp::Filter;
 
