@@ -5,6 +5,7 @@ use std::net::SocketAddr;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
+use warp::http::HeaderValue;
 use warp::ws::{Message, WebSocket};
 use warp::Filter;
 
@@ -22,15 +23,17 @@ async fn main() {
     let users = Users::default();
     let users = warp::any().map(move || users.clone());
 
-    let opt = warp::path::param::<String>().map(Some).or_else(|_| async {
-        Ok::<(Option<String>,), std::convert::Infallible>((Some("world".to_string()),))
-    });
+    let opt = warp::path::param::<String>()
+        .map(Some)
+        .or_else(|_| async { Ok::<(Option<String>,), std::convert::Infallible>((None,)) });
 
     // GET /hello/warp => 200 OK with body "Hello, warp!"
     let hello = warp::path("hello")
         .and(opt)
         .and(warp::path::end())
-        .map(|name: Option<String>| format!("Hello, {}!", name.unwrap()));
+        .map(|name: Option<String>| {
+            format!("Hello, {}!", name.unwrap_or_else(|| "world".to_string()))
+        });
 
     let chat = warp::path("ws")
         .and(warp::ws())
@@ -47,11 +50,11 @@ async fn main() {
 
     let routes = chat.or(hello).or(files).or(res_404);
 
-    let server = warp::serve(routes).run(socket_address);
+    let server = warp::serve(routes).try_bind(socket_address);
 
     println!("Running server at {}!", addr);
 
-    server.await;
+    server.await
 }
 
 async fn connect(ws: WebSocket, users: Users) {
