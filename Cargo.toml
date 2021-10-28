@@ -1,5 +1,5 @@
 [package]
-name = "collab-service-warp"
+name = "warp-websockets-example"
 version = "0.1.0"
 authors = ["stefan.baumgartner <Stefan.Baumgartner@dynatrace.com>"]
 edition = "2018"

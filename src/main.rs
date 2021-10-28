@@ -34,6 +34,7 @@ async fn main() {
             format!("Hello, {}!", name.unwrap_or_else(|| "world".to_string()))
         });
 
+    // GET /ws
     let chat = warp::path("ws")
         .and(warp::ws())
         .and(users)
@@ -57,26 +58,30 @@ async fn main() {
 }
 
 async fn connect(ws: WebSocket, users: Users) {
+    // Bookkeeping
     let my_id = NEXT_USERID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    println!("Welcome User {}", my_id);
 
-    println!("conntected user: {}", my_id);
-
+    // Establishing a connection
     let (user_tx, mut user_rx) = ws.split();
     let (tx, rx) = mpsc::unbounded_channel();
+
     let rx = UnboundedReceiverStream::new(rx);
 
-    tokio::task::spawn(rx.forward(user_tx));
+    tokio::spawn(rx.forward(user_tx));
     users.write().await.insert(my_id, tx);
 
+    // Reading and broadcasting messages
     while let Some(result) = user_rx.next().await {
-        broadcast_message(result.expect("Failed to fetch message"), &users).await;
+        broadcast_msg(result.expect("Failed to fetch message"), &users).await;
     }
 
+    // Disconnect
     disconnect(my_id, &users).await;
 }
 
-async fn broadcast_message(msg: Message, users: &Users) {
-    if let Ok(_s_msg) = msg.to_str() {
+async fn broadcast_msg(msg: Message, users: &Users) {
+    if let Ok(_) = msg.to_str() {
         for (&_uid, tx) in users.read().await.iter() {
             tx.send(Ok(msg.clone())).expect("Failed to send message");
         }
@@ -84,8 +89,7 @@ async fn broadcast_message(msg: Message, users: &Users) {
 }
 
 async fn disconnect(my_id: usize, users: &Users) {
-    println!("good bye user: {}", my_id);
+    println!("Good bye user {}", my_id);
 
-    // Stream closed up, so remove from the user list
     users.write().await.remove(&my_id);
 }
